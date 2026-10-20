@@ -1,3 +1,7 @@
+param(
+  [Parameter(Mandatory=$true)] [string]$AdminPassword
+)
+
 # build-pawtest-rg.ps1 - build the PAW-consumer resource group: RG + NSG + VNet + VM
 # Proven-as-run 2026-10-20 (the live commands that created rg-pawtest / pawtest-1,
 # captured into a script per owner's log rule). Idempotent-ish: names are fixed,
@@ -22,10 +26,6 @@ $VMSIZE    = "Standard_D4s_v4"
 $ADMIN     = "timadmin"
 $SUBID     = "51d0ca21-eaa5-4d34-aeb3-fa9f7d454b5d"
 $IMAGE     = "/subscriptions/$SUBID/resourceGroups/tim_paw_gallery_rg/providers/Microsoft.Compute/galleries/tim_paw_gallery_rg/images/PrivilegedWorkstationTL/versions/1.0.1791889081"
-# admin password: pass in via -AdminPassword (never store in this file)
-param(
-  [Parameter(Mandatory=$true)] [string]$AdminPassword
-)
 
 $ErrorActionPreference = "Stop"
 
