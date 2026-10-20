@@ -33,6 +33,8 @@ bld/
 
 !scripts/Release/
 
+/Parameters/
+
 # These are the PowerShell helper libraries used to run. Added to artifact as automated task
 Tools/PowershellModule/src/Library/ARMTemplate
 Tools/PowershellModule/src/Library/RestAPI
@@ -374,3 +376,4 @@ Microsoft.WinGet.*.Documentation.xml
 # Developer ARM template
 src/WinGet.RestSource.Infrastructure/**/*.dev.*json
 
+deploy-settings.psd1
