@@ -372,7 +372,7 @@ if ($Publish) {
   # 2. upload (blob name = the file's real name)
   $blobName = [IO.Path]::GetFileName($File)
   Info "uploading $blobName ..."
-  az storage blob upload --account-name sttmwinget2 --container-name installers --name $blobName --file $File --auth-mode login -o none
+  az storage blob upload --account-name sttmwinget2 --container-name installers --name $blobName --file $File --overwrite --auth-mode login -o none
   Info 'uploaded'
 
   # 3. hash the LOCAL file (identical to the blob by upload contract, re-read local)
