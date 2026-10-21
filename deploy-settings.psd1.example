@@ -1,17 +1,17 @@
 ﻿@{
-    TenantId                                 = '15fb0613-7977-4551-801b-6aadac824241'
-    SubscriptionId                           = '51d0ca21-eaa5-4d34-aeb3-fa9f7d454b5d'
-    Name                                     = 'JpvWinget'
-    ResourceGroup                            = 'jpv-winget-rg'
+    # Example / template - placeholders only, no real IDs (that is the point of this file)
+    TenantId                                 = '<your-tenant-guid>'
+    SubscriptionId                           = '<your-subscription-guid>'
+    Name                                     = 'YourWinget'
+    ResourceGroup                            = 'your-winget-rg'
     Region                                   = 'australiaeast'
     TemplateFolderPath                       = $null
     ParameterOutputPath                      = 'Parameters'
     RestSourcePath                           = $null
     ImplementationPerformance                = 'Developer'
-    RestSourceAuthentication                 = 'MicrosoftEntraId'
-    CreateNewMicrosoftEntraIdAppRegistration = $true
-    PublisherName                            = 'Zenblox'
-    PublisherEmail                           = 'info@zenblox.net'
+    RestSourceAuthentication                 = 'None'
+    PublisherName                            = '<publisher>'
+    PublisherEmail                           = '<email>'
     ShowConnectionInstructions               = $true
     MaxRetryCount                            = 5
     InformationAction                        = 'Continue'
