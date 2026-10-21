@@ -263,7 +263,10 @@ if ($GetManifest) {
   if (-not $PackageId) { throw 'need -PackageId (id format: Publisher.Product, exact case - e.g. 7zip.7zip)' }
   $pub, $prod = $PackageId -split '\.', 2
   if (-not $prod) { $prod = $pub }
-  $ghFolder = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/$($pub[0])/$pub/$prod"
+  # GitHub winget-pkgs paths are CASE-SENSITIVE: letter folder LOWERCASE, pub/prod mirror
+  # the ID exactly (7zip.7zip -> 7/7zip/7zip, PuTTY.PuTTY -> p/PuTTY/PuTTY).
+  $letter = "$($pub[0])".ToLower()
+  $ghFolder = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/$letter/$pub/$prod"
   if (-not $Version -or $Version -eq 'list') {
     Step "listing versions of $PackageId"
     (Invoke-RestMethod -Uri $ghFolder -Headers (Get-GhHeader)).name | Sort-Object -Property {[version]$_} -Descending -ErrorAction SilentlyContinue | Select-Object -First 15
