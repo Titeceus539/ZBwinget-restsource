@@ -1,17 +1,24 @@
 ﻿@{
-    # Example / template - placeholders only, no real IDs (that is the point of this file)
-    TenantId                                 = '<your-tenant-guid>'
-    SubscriptionId                           = '<your-subscription-guid>'
-    Name                                     = 'YourWinget'
-    ResourceGroup                            = 'your-winget-rg'
-    Region                                   = 'australiaeast'
-    TemplateFolderPath                       = $null
+    # ===== REQUIRED — Azure context =====
+    # These 4 lines are all a developer normally edits. File is gitignored (real IDs).
+    TenantId       = '<your-tenant-guid>'
+    SubscriptionId = '<your-subscription-guid>'
+    Name           = 'YourWinget'          # seeds resource names (st<name>, cosmos, func). Must be globally unique in Azure.
+    ResourceGroup  = 'your-winget-rg'      # dedicated group: -Destroy deletes EVERYTHING in it
+    Region         = 'australiaeast'
+
+    # ===== PUBLISHER — shown in winget metadata =====
+    PublisherName  = '<publisher>'
+    PublisherEmail = '<email>'
+
+    # ===== LEGACY module settings =====
+    # Leave these as-is unless redeploying the repo from zero. deploy.ps1 ignores them;
+    # they only exist because Microsoft.WinGet.RestSource reads this file on -Deploy.
+    TemplateFolderPath                       = $null   # $null = module's bundled ARM templates
     ParameterOutputPath                      = 'Parameters'
-    RestSourcePath                           = $null
-    ImplementationPerformance                = 'Developer'
-    RestSourceAuthentication                 = 'None'
-    PublisherName                            = '<publisher>'
-    PublisherEmail                           = '<email>'
+    RestSourcePath                           = $null   # $null = module's stock function zip (proven path)
+    ImplementationPerformance                = 'Developer'   # free-tier Cosmos
+    RestSourceAuthentication                 = 'None'        # function-key URL (Entra path = 500 storm, see journal)
     ShowConnectionInstructions               = $true
     MaxRetryCount                            = 5
     InformationAction                        = 'Continue'

@@ -1,3 +1,22 @@
+# START HERE — Zenblox private winget repo
+
+This fork adds an operator/developer workflow on top of Microsoft's winget-cli-restsource:
+
+| File | What it is |
+|---|---|
+| `USERS.md` | **how to publish, list, download, install** — read this first |
+| `tools\ZB-Winget-UI.ps1` | point-and-click control panel (no CLI needed) |
+| `RUNBOOK.md` | build / verify / repair / destroy the repo itself (ops) |
+| `deploy.ps1` | the one script behind everything (`-Publish`, `-List`, `-Fetch`, `-Deploy`, …) |
+| `scripts/verify-loop.ps1` | read-only health check — receipt `6 passed, 0 failed` |
+| `paw-build/` | previous phase: PAW consumer-VM scripts (reference, will evolve next) |
+| `build-journal-*.md` | dated change log — newest = current truth |
+
+Everything below this line is Microsoft's upstream documentation for the product itself
+(building the C# client, deploying via the official PowerShell module, tests).
+
+---
+
 # Welcome to the winget-cli-restsource repository
 
 ## Create a Windows Package Manager REST source on Azure with PowerShell
