@@ -29,6 +29,10 @@ SWITCHES
                                         your installers blob container, signs a link,
                                         builds the manifest triplet, ingests it. Use for
                                         files NOT in the public catalog.
+  -List                                 what's in the repo? (table: id, version, name, file)
+  -Fetch -PackageId <id> -Version <v> [-OutDir <dir>]
+                                        download a published installer back out of the
+                                        repo, hash-verified (default dir .\downloads)
 
 PREREQS  PowerShell 7.4+, az CLI (logged in), Az PowerShell module,
          Microsoft.WinGet.RestSource module (auto-installed if missing), Owner on the sub.
@@ -52,6 +56,9 @@ param(
   [switch]$Ingest,
   [switch]$ClientTest,
   [switch]$Publish,
+  [switch]$List,
+  [switch]$Fetch,
+  [string]$OutDir,
   [string]$PackageId,
   [string]$Version,
   [string]$ManifestDir,
@@ -365,14 +372,25 @@ if ($Publish) {
   )) { if (-not $req.v) { throw "need $($req.n)" } }
   if (-not (Test-Path -LiteralPath $File)) { throw "-File not found: '$File'" }
   Ensure-Az
+  $r = Get-RepoResources
 
-  # 1. ensure the installers container exists
-  az storage container create --account-name sttmwinget2 --name installers --public-access off --auth-mode login -o none 2>$null
+  # Discover the storage account from the function app's own wiring - never hardcode it,
+  # so this works for every dev's settings file and survives rebuilds/renames.
+  $blobUri = az functionapp config appsettings list -g $RG -n $r.App.name --query "[?name=='AzureWebJobsStorage__blobServiceUri'].value" -o tsv
+  $stg = if ($blobUri) { ([uri]$blobUri).Host.Split('.')[0] } else { 'st' + (([string]$settings.Name).ToLower() -replace '[^a-z0-9]', '') }
+  Info "storage account: $stg"
 
-  # 2. upload (blob name = the file's real name)
+  # 1. ensure the installers container exists (fail LOUDLY with the role hint)
+  $mk = az storage container create --account-name $stg --name installers --public-access off --auth-mode login -o none 2>&1
+  if ($LASTEXITCODE -ne 0 -and ("$mk" -notmatch 'already exists|AlreadyExists')) {
+    throw "cannot create container 'installers' on $stg. You likely need Storage Blob Data Owner on that storage account (portal: storage account -> Access control (IAM) -> Add role assignment). az said: $mk"
+  }
+
+  # 2. upload (blob name = the file's real name; --overwrite makes re-publish silent)
   $blobName = [IO.Path]::GetFileName($File)
   Info "uploading $blobName ..."
-  az storage blob upload --account-name sttmwinget2 --container-name installers --name $blobName --file $File --overwrite --auth-mode login -o none
+  az storage blob upload --account-name $stg --container-name installers --name $blobName --file $File --overwrite --auth-mode login -o none
+  if ($LASTEXITCODE -ne 0) { throw "blob upload failed (see az output above)" }
   Info 'uploaded'
 
   # 3. hash the LOCAL file (identical to the blob by upload contract, re-read local)
@@ -381,7 +399,7 @@ if ($Publish) {
 
   # 4. signed link, pinned pattern (user-delegation SAS: --as-user, 7-day cap)
   $expiry = (Get-Date).AddDays(6).ToString('yyyy-MM-dd')
-  $url = az storage blob generate-sas --account-name sttmwinget2 --container-name installers --name $blobName --permissions r --expiry $expiry --https-only --as-user --auth-mode login --full-uri -o tsv
+  $url = az storage blob generate-sas --account-name $stg --container-name installers --name $blobName --permissions r --expiry $expiry --https-only --as-user --auth-mode login --full-uri -o tsv
   if (-not $url -or $url -notmatch '^https://') { throw "SAS generation failed: '$url'" }
   Info "signed link until $expiry"
 
@@ -389,10 +407,11 @@ if ($Publish) {
   $dir = New-PublishManifest -File $File -Id $PackageId -Ver $Version -Pub $Publisher -Desc $Description -Arch $Architecture -Url $url -Sha $sha
   Info "manifest files in $dir"
 
-  # 6. straight into the proven ingest
-  $r = Get-RepoResources
+  # 6. straight into the proven ingest (module warns per app-setting property - suppress that spray only)
   Import-Module Microsoft.WinGet.RestSource -ErrorAction Stop
-  Add-WinGetManifest -FunctionName $r.App.name -Path $dir
+  $warnBefore = $WarningPreference
+  $WarningPreference = 'SilentlyContinue'
+  try { Add-WinGetManifest -FunctionName $r.App.name -Path $dir } finally { $WarningPreference = $warnBefore }
   Write-Host "`n[PUBLISH_OK] '$PackageId' $Version live from your blob." -ForegroundColor Green
   Write-Host "Install on any wired PC:"
   Write-Host "  winget install --id $PackageId --version $Version --source internal --accept-package-agreements --accept-source-agreements"
@@ -407,6 +426,62 @@ if ($Ingest) {
   Step "ingesting $ManifestDir -> function '$($r.App.name)'"
   Add-WinGetManifest -FunctionName $r.App.name -Path $ManifestDir
   Write-Host "[INGEST_OK] receipt check comes with -ClientTest (winget search)" -ForegroundColor Green
+}
+
+# ============================================================= -List
+# What is in the repo?  Read-only, no Azure writes.
+if ($List) {
+  Ensure-Az
+  $r = Get-RepoResources
+  $k = az functionapp keys list -g $RG -n $r.App.name --query functionKeys.default -o tsv
+  if (-not $k) { throw 'could not read the repo function key' }
+  $resp = Invoke-RestMethod -Uri "$($r.Url)/packageManifests?code=$k" -TimeoutSec 60
+  if (-not $resp.Data) { Write-Host '[REPO_EMPTY] nothing published yet - use -Publish'; return }
+  $rows = foreach ($p in $resp.Data) {
+    foreach ($v in $p.Versions) {
+      [pscustomobject]@{
+        PackageIdentifier = $p.PackageIdentifier
+        Version           = $v.PackageVersion
+        Name              = $v.DefaultLocale.PackageName
+        Publisher         = $v.DefaultLocale.Publisher
+        File              = [IO.Path]::GetFileName(([uri](($v.Installers | Select-Object -First 1).InstallerUrl)).AbsolutePath)
+      }
+    }
+  }
+  $rows | Sort-Object PackageIdentifier, Version | Format-Table -AutoSize
+  Write-Host ("[LIST_OK] {0} package(s) in the repo" -f @($resp.Data).Count) -ForegroundColor Green
+}
+
+# ============================================================= -Fetch
+# Download a published installer back out of the repo, hash-verified. For devs who want
+# the file itself rather than an install. -OutDir defaults to .\downloads
+if ($Fetch) {
+  if (-not $PackageId -or -not $Version) { throw 'need -PackageId and -Version for -Fetch (run -List to see what exists)' }
+  Ensure-Az
+  $r = Get-RepoResources
+  $k = az functionapp keys list -g $RG -n $r.App.name --query functionKeys.default -o tsv
+  if (-not $k) { throw 'could not read the repo function key' }
+  $resp = Invoke-RestMethod -Uri "$($r.Url)/packageManifests?code=$k" -TimeoutSec 60
+  $pkg = @($resp.Data) | Where-Object PackageIdentifier -eq $PackageId
+  if (-not $pkg) { throw "package '$PackageId' not in the repo - run -List" }
+  $ver = @($pkg.Versions) | Where-Object PackageVersion -eq $Version
+  if (-not $ver) { throw "'$PackageId' has no version '$Version' - run -List" }
+  $inst = @($ver.Installers)[0]
+  if (-not $inst.InstallerUrl) { throw 'manifest has no installer URL' }
+  $outDir = if ($OutDir) { $OutDir } else { Join-Path $PSScriptRoot 'downloads' }
+  New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+  $fileName = [IO.Path]::GetFileName(([uri]$inst.InstallerUrl).AbsolutePath)
+  $target = Join-Path $outDir $fileName
+  Step "FETCH $PackageId $Version -> $target"
+  Invoke-WebRequest -Uri $inst.InstallerUrl -OutFile $target -TimeoutSec 600
+  $got = (Get-FileHash -Path $target -Algorithm SHA256).Hash.ToUpper()
+  $want = ([string]$inst.InstallerSha256).ToUpper()
+  if ($got -ne $want) {
+    Remove-Item $target -Force -ErrorAction SilentlyContinue
+    throw "HASH MISMATCH - download rejected and deleted. got $got / manifest says $want"
+  }
+  Write-Host "[FETCH_OK] $fileName  sha256 verified ($got)" -ForegroundColor Green
+  Write-Host "  saved: $target"
 }
 
 # ============================================================= -ClientTest
@@ -451,6 +526,6 @@ exit `$LASTEXITCODE
 }
 
 # no switch given -> usage
-if (-not ($Destroy -or $Deploy -or $Repair -or $Verify -or $GetManifest -or $Ingest -or $ClientTest -or $Publish)) {
-  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Repair / -Verify / -GetManifest / -Ingest / -ClientTest / -Publish (see header comment).'
+if (-not ($Destroy -or $Deploy -or $Repair -or $Verify -or $GetManifest -or $Ingest -or $List -or $Fetch -or $ClientTest -or $Publish)) {
+  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Repair / -Verify / -List / -Fetch / -GetManifest / -Publish / -Ingest / -ClientTest (see header comment).'
 }

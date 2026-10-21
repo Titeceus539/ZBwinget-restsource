@@ -27,17 +27,30 @@ az login
 - A UAC popup appears → click **Yes** (needed once, to register the repo as a winget source).
 - **Receipt:** a table listing a package, e.g. `7-Zip  7zip.7zip  26.04`.
 
-## 2. Publish a program into the repo (3 commands)
+## 2. Publish a program into the repo
 
+**If it's your own file (not in Microsoft's catalog) — ONE line:**
+```powershell
+.\deploy.ps1 -Publish -File "C:\path\to\YourApp.exe" -PackageId Zenblox.MyApp -Version 1.0.0 -Publisher Zenblox -Description "what it is"
+```
+= `[PUBLISH_OK]`. That single line uploads the file to our storage, signs a link, fingerprints the file, writes the manifest, and pushes it into the repo.
+
+**If it's a known public program — three lines:**
 ```powershell
 .\deploy.ps1 -GetManifest -PackageId 7zip.7zip -Version list    # see available versions
 .\deploy.ps1 -GetManifest -PackageId 7zip.7zip -Version 26.04   # pull its manifest
 .\deploy.ps1 -Ingest -ManifestDir .\manifests\7zip.7zip\26.04   # push into the repo
 ```
-- Replace `7zip.7zip` with any package ID from the public catalog
-  (github.com/microsoft/winget-pkgs). The ID is **case-sensitive** — copy it exactly.
-- Step 1 (`-Version list`) shows what versions exist; pick one, then run steps 2–3 with it.
-- **Receipt (step 3):** `PackageIdentifier  <the-id>`.
+Package IDs come from github.com/microsoft/winget-pkgs and are **case-sensitive**.
+
+## 2b. Check what's in the repo / get a file back out
+
+```powershell
+.\deploy.ps1 -List                                                        # table of everything in the repo
+.\deploy.ps1 -Fetch -PackageId Zenblox.MyApp -Version 1.0.0               # download it back, hash-verified
+.\deploy.ps1 -Fetch -PackageId Zenblox.MyApp -Version 1.0.0 -OutDir "D:\temp"
+```
+`-List` = **receipt `[LIST_OK]`**. `-Fetch` = **`[FETCH_OK]`** with the file's fingerprint printed; a corrupted download is deleted automatically, never kept.
 
 ## 3. Install a program from the repo
 

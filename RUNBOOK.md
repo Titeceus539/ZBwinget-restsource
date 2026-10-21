@@ -14,6 +14,10 @@ operating and rebuilding the repo itself.
 cd D:\code\ZBwinget-restsource\ZBwinget-restsource   # branch Tim
 az login                                             # once per session
 
+.\deploy.ps1 -Publish -File <path> -PackageId <id> -Version <v> -Publisher <name>
+                          # ONE line: upload + signed link + manifest + ingest (own files)
+.\deploy.ps1 -List        # what's in the repo?
+.\deploy.ps1 -Fetch -PackageId <id> -Version <v>   # download an installer back out, hash-verified
 .\deploy.ps1 -Deploy      # build the whole repo (~15 min) + auto-repair + wait until healthy
 .\deploy.ps1 -Verify      # is the repo alive?   receipt: [HOST_UP]
 .\deploy.ps1 -Repair      # finish a deploy the module abandoned (safe to re-run)
