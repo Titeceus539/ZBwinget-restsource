@@ -24,6 +24,11 @@ SWITCHES
   -Ingest -ManifestDir <dir>            push that folder into the repo (Add-WinGetManifest)
   -ClientTest [-SearchTerm <term>]      add winget source 'internal' (auto-elevates via
                                         UAC if needed) + winget search receipt
+  -Publish -File <path> -PackageId <id> -Version <v> -Publisher <pub>
+                                        ONE-LINE self-hosted publish: uploads the exe to
+                                        your installers blob container, signs a link,
+                                        builds the manifest triplet, ingests it. Use for
+                                        files NOT in the public catalog.
 
 PREREQS  PowerShell 7.4+, az CLI (logged in), Az PowerShell module,
          Microsoft.WinGet.RestSource module (auto-installed if missing), Owner on the sub.
@@ -46,9 +51,15 @@ param(
   [switch]$GetManifest,
   [switch]$Ingest,
   [switch]$ClientTest,
+  [switch]$Publish,
   [string]$PackageId,
   [string]$Version,
   [string]$ManifestDir,
+  [string]$File,
+  [string]$Publisher,
+  [string]$Description,
+  [ValidateSet('x86', 'x64', 'arm64')]
+  [string]$Architecture = 'x64',
   [string]$SearchTerm   = '7zip',
   [string]$SourceAlias  = 'internal',
   [string]$SettingsFile = (Join-Path $PSScriptRoot 'deploy-settings.psd1'),
@@ -290,6 +301,103 @@ if ($GetManifest) {
   Write-Host "[MANIFEST_OK] $outDir" -ForegroundColor Green
 }
 
+# ============================================================= -Publish
+# One-line self-hosted publish: upload exe -> signed link -> manifest triplet -> ingest.
+# Exists because wingetcreate cannot parse signed blob URLs (uses the querystring as a
+# filename) - so the manifest build is done here deterministically, spec 1.12.0 (the
+# exact spec proven live on this repo 2026-10-21 with the 7-Zip ingestion).
+function New-PublishManifest {
+  param([string]$File, [string]$Id, [string]$Ver, [string]$Pub, [string]$Desc, [string]$Arch, [string]$Url, [string]$Sha)
+  $dir = Join-Path $PSScriptRoot "manifests\$Id\$Ver"
+  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+  $verY = @"
+PackageIdentifier: $Id
+PackageVersion: '$Ver'
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.12.0
+"@
+
+  $safeDesc = if ($Desc) { $Desc } else { "Package $Id" }
+  $localeY = @"
+PackageIdentifier: $Id
+PackageVersion: '$Ver'
+PackageLocale: en-US
+Publisher: $Pub
+PackageName: $(($Id -split '\.')[-1])
+License: Proprietary
+ShortDescription: $safeDesc
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0
+"@
+
+  $instY = @"
+PackageIdentifier: $Id
+PackageVersion: '$Ver'
+InstallerType: portable
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+ReleaseDate: $(Get-Date -Format yyyy-MM-dd)
+Installers:
+- Architecture: $Arch
+  InstallerUrl: $Url
+  InstallerSha256: $Sha
+ManifestType: installer
+ManifestVersion: 1.12.0
+"@
+
+  Set-Content -Path (Join-Path $dir "$Id.yaml") -Value $verY -Encoding utf8NoBOM
+  Set-Content -Path (Join-Path $dir "$Id.locale.en-US.yaml") -Value $localeY -Encoding utf8NoBOM
+  Set-Content -Path (Join-Path $dir "$Id.installer.yaml") -Value $instY -Encoding utf8NoBOM
+  return $dir
+}
+
+if ($Publish) {
+  Step 'PUBLISH (upload -> link -> manifest -> ingest)'
+  foreach ($req in @(
+    @{ v = $File;          n = '-File <path to the .exe>' },
+    @{ v = $PackageId;     n = '-PackageId <Publisher.Product, e.g. Zenblox.MyApp>' },
+    @{ v = $Version;       n = '-Version <e.g. 1.0.0>' },
+    @{ v = $Publisher;     n = '-Publisher <e.g. Zenblox>' }
+  )) { if (-not $req.v) { throw "need $($req.n)" } }
+  if (-not (Test-Path -LiteralPath $File)) { throw "-File not found: '$File'" }
+  Ensure-Az
+
+  # 1. ensure the installers container exists
+  az storage container create --account-name sttmwinget2 --name installers --public-access off --auth-mode login -o none 2>$null
+
+  # 2. upload (blob name = the file's real name)
+  $blobName = [IO.Path]::GetFileName($File)
+  Info "uploading $blobName ..."
+  az storage blob upload --account-name sttmwinget2 --container-name installers --name $blobName --file $File --auth-mode login -o none
+  Info 'uploaded'
+
+  # 3. hash the LOCAL file (identical to the blob by upload contract, re-read local)
+  $sha = (Get-FileHash -Path $File -Algorithm SHA256).Hash
+  Info "sha256: $sha"
+
+  # 4. signed link, pinned pattern (user-delegation SAS: --as-user, 7-day cap)
+  $expiry = (Get-Date).AddDays(6).ToString('yyyy-MM-dd')
+  $url = az storage blob generate-sas --account-name sttmwinget2 --container-name installers --name $blobName --permissions r --expiry $expiry --https-only --as-user --auth-mode login --full-uri -o tsv
+  if (-not $url -or $url -notmatch '^https://') { throw "SAS generation failed: '$url'" }
+  Info "signed link until $expiry"
+
+  # 5. manifest triplet
+  $dir = New-PublishManifest -File $File -Id $PackageId -Ver $Version -Pub $Publisher -Desc $Description -Arch $Architecture -Url $url -Sha $sha
+  Info "manifest files in $dir"
+
+  # 6. straight into the proven ingest
+  $r = Get-RepoResources
+  Import-Module Microsoft.WinGet.RestSource -ErrorAction Stop
+  Add-WinGetManifest -FunctionName $r.App.name -Path $dir
+  Write-Host "`n[PUBLISH_OK] '$PackageId' $Version live from your blob." -ForegroundColor Green
+  Write-Host "Install on any wired PC:"
+  Write-Host "  winget install --id $PackageId --version $Version --source internal --accept-package-agreements --accept-source-agreements"
+}
+
 # ============================================================= -Ingest
 if ($Ingest) {
   if (-not (Test-Path -LiteralPath $ManifestDir)) { throw "need -ManifestDir <folder with the version yaml files>; got '$ManifestDir'" }
@@ -343,6 +451,6 @@ exit `$LASTEXITCODE
 }
 
 # no switch given -> usage
-if (-not ($Destroy -or $Deploy -or $Repair -or $Verify -or $GetManifest -or $Ingest -or $ClientTest)) {
-  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Repair / -Verify / -GetManifest / -Ingest / -ClientTest (see header comment).'
+if (-not ($Destroy -or $Deploy -or $Repair -or $Verify -or $GetManifest -or $Ingest -or $ClientTest -or $Publish)) {
+  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Repair / -Verify / -GetManifest / -Ingest / -ClientTest / -Publish (see header comment).'
 }
