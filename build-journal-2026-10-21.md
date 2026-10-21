@@ -77,6 +77,17 @@ paw-build\ stays in place as reference until loop proven; attic-move deferred.
   uninstalled package, owner's pick (installs stay per-item approval on this PC).
 - LOOP STATE: destroy/verify/repair/deploy/getmanifest/ingest/clienttest ALL live-proven
   2026-10-21. PAW consumer-VM wiring (paw-build) returns as a later phase.
+
+## 2026-10-21 ~16:55 — FINAL RECEIPT: FULL-INSTALL ROUND TRIP PROVEN
+
+- `winget install --id Notepad++.Notepad++ --source internal` (owner-approved): repo found
+  8.9.3, downloaded the installer, **"Successfully verified installer hash"**, **"Successfully
+  installed"**. Exit 0. `winget list` confirms Notepad++ 8.9.3 registered with source internal.
+- Meaning: package traveled GitHub -> acquisition PC -> Azure repo -> back to PC, hash-checked
+  end to end. The loop owner asked for ("delete all, rebuild by script, install a program via
+  the servers") is COMPLETE and reproducible by scripts alone (deploy.ps1 + verify-loop.ps1).
+- In-repo packages now: 7zip.7zip 26.04, PuTTY.PuTTY 0.82.0.0, Notepad++.Notepad++ 8.9.3,
+  CaddyServer.Caddy 2.10.1 (retired id, harmless).
 - Ad-hoc verification (13 checks, temp script, deleted after run): 12/13 pass -> found real bug in -GetManifest list mode (URL got /list appended -> GitHub 404). Fixed = ghFolder built without version, apiBase appends version only for real pulls. Re-run: 13/13 PASS incl. live GitHub listing (7zip.7zip -> 26.04, 26.03) + protected-RG guard + arg-validation + usage.
 - (Superseded 10-21: the Azure-side paths listed as "not verified" below were ALL live-proven later this same session — see sections above. Kept here only as the pre-run checklist.)
 - STEP 3 (cont.): lowercase-letter-folder bug FIXED (list 404 for PuTTY.PuTTY: letter folder is lowercase, pub/prod mirror ID case). Proven: PuTTY 0.82.0.0 ingested -> winget show [OK]; CaddyServer.Caddy 2.10.1 ingested (Caddy RETIRED per owner 10-21 - do not use/install); Notepad++.Notepad++ 8.9.3 ingested (1 transient ARM timeout on key put, retry OK). FRESH-INSTALL receipt = owner-approved install of Notepad++ from source internal (pending owner OK).
