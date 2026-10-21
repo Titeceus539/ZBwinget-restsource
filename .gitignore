@@ -377,3 +377,6 @@ Microsoft.WinGet.*.Documentation.xml
 src/WinGet.RestSource.Infrastructure/**/*.dev.*json
 
 deploy-settings.psd1
+
+# transient loop artifacts (regenerable via deploy.ps1 -GetManifest)
+manifests/
