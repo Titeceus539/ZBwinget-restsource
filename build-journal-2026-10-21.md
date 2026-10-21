@@ -32,3 +32,5 @@ KNOWN LIVE FINDINGS carried forward (from paw-build/build-journal-2026-10-20.md)
 NEXT: step 2 = -Destroy stale tm-winget-rg, -Deploy first live run (needs owner OK +
 az login at keyboard). rg-winget-manual & rg-wingettest DIE LAST (standing rule).
 paw-build\ stays in place as reference until loop proven; attic-move deferred.
+- Ad-hoc verification (13 checks, temp script, deleted after run): 12/13 pass -> found real bug in -GetManifest list mode (URL got /list appended -> GitHub 404). Fixed = ghFolder built without version, apiBase appends version only for real pulls. Re-run: 13/13 PASS incl. live GitHub listing (7zip.7zip -> 26.04, 26.03) + protected-RG guard + arg-validation + usage.
+- NOT verified live (needs owner approval + az login): -Destroy/-Deploy/-Ingest/-ClientTest Azure paths; the health probe; the cosmos-identity repair.

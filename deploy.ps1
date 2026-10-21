@@ -214,12 +214,13 @@ if ($GetManifest) {
   if (-not $PackageId) { throw 'need -PackageId (id format: Publisher.Product, exact case - e.g. 7zip.7zip)' }
   $pub, $prod = $PackageId -split '\.', 2
   if (-not $prod) { $prod = $pub }
-  $apiBase = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/$($pub[0])/$pub/$prod/$Version"
+  $ghFolder = "https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/$($pub[0])/$pub/$prod"
   if (-not $Version -or $Version -eq 'list') {
     Step "listing versions of $PackageId"
-    (Invoke-RestMethod -Uri $apiBase -Headers (Get-GhHeader)).name | Sort-Object -Property {[version]$_} -Descending -ErrorAction SilentlyContinue | Select-Object -First 15
+    (Invoke-RestMethod -Uri $ghFolder -Headers (Get-GhHeader)).name | Sort-Object -Property {[version]$_} -Descending -ErrorAction SilentlyContinue | Select-Object -First 15
     return
   }
+  $apiBase = "$ghFolder/$Version"
   $outDir = Join-Path $PSScriptRoot "manifests\$PackageId\$Version"
   Step "pulling $PackageId $Version -> $outDir"
   New-Item -ItemType Directory -Path $outDir -Force | Out-Null
