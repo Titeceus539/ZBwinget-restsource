@@ -73,10 +73,66 @@ after a rebuild. That is by design.
 
 ---
 
+## Zero knowledge? — Publish YOUR OWN file, every click (start to finish)
+
+For when the file is one only you have (not in Microsoft's public catalog).
+
+### Phase A — open the tools
+
+1. Start button → type `powershell` → Enter. (Dark window opens; you type commands.)
+2. `cd D:\code\ZBwinget-restsource\ZBwinget-restsource`
+3. `az login` → browser opens → sign in with your Zenme account → back to the window.
+   (Login lasts hours; if you later see AuthorizationFailed, do this again.)
+
+### Phase B — put your file on the servers (per file)
+
+*(Public-catalog programs skip B-1/B-2: go straight to `.\deploy.ps1 -GetManifest
+-PackageId <id> -Version <v>` then `-Ingest` — see section 2 above.)*
+
+4. Create the private installers locker (once, ever; safe to re-run) — NOTE: always
+   `--auth-mode login`; this storage account forbids key auth:
+```powershell
+az storage container create --account-name sttmwinget2 --name installers --public-access off --auth-mode login -o none
+```
+5. Upload your file (point `--file` at wherever it sits on your PC):
+```powershell
+az storage blob upload --account-name sttmwinget2 --container-name installers --name MyApp-1.0.0.exe --file "C:\path\to\MyApp-1.0.0.exe" --auth-mode login -o none
+```
+6. Get the signed link (works until the expiry date, then dies — on purpose). Copy the output line:
+```powershell
+az storage blob generate-sas --account-name sttmwinget2 --container-name installers --name MyApp-1.0.0.exe --permissions r --expiry 2027-10-21 --https-only --auth-mode login --full-uri -o tsv
+```
+7. One-time helper install: `winget install Microsoft.WingetCreate`
+8. Let it describe your file (computes the hash for you, asks short questions; pick an ID like `Zenblox.MyApp`):
+```powershell
+wingetcreate new "<paste the signed link here>"
+```
+9. Give the repo those generated yamls:
+```powershell
+.\deploy.ps1 -Ingest -ManifestDir "<folder wingetcreate printed>"
+```
+   → `[INGEST_OK]` = in stock at the servers.
+
+### Phase C — install from the servers (per PC)
+
+10. One-time wiring on that PC: Phase A, then `.\deploy.ps1 -ClientTest`
+    (UAC popup → Yes; receipt = a table listing a package).
+11. Install:
+```powershell
+winget install --id Zenblox.MyApp --source internal
+```
+    → The golden line: **`Successfully verified installer hash`** — byte-identical
+    to what you uploaded, proven. Then `Successfully installed`.
+
+Nothing is deleted, nothing is redeployed. Repeat Phase B per file, Phase C per PC.
+
+---
+
 ## If something fails
 
 | What you saw | Do this |
 |---|---|
+| `KeyBasedAuthenticationNotPermitted` on a storage command | You used `--auth-mode key` — this account forbids keys. Change the command to `--auth-mode login` (all commands in this file already use it). |
 | `-Deploy` ends with an error about a Cosmos role assignment | Run `.\deploy.ps1 -Repair` — the script finishes the job the module forgot. |
 | `winget search` finds nothing | Re-publish the package (step 2), then retry. |
 | Everything answers 404 from the function app | Someone rebuilt without publishing; run step 2 for each package you need. |
