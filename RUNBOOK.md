@@ -28,7 +28,7 @@ az login                                             # once per session
 pwsh ./scripts/verify-loop.ps1   # read-only health check, receipt: 6/6 PASS
 ```
 
-Prefer clicking over typing? **`tools\Open-Panel.cmd`** (double-click) opens the
+Prefer clicking over typing? **`ui\Open-Panel.cmd`** (double-click) opens the
 control panel — Publish / List / Verify / Setup / Install buttons over the same script.
 
 ## The two rules

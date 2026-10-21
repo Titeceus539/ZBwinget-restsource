@@ -1,7 +1,7 @@
 # How to Use the Zenblox Winget Repo — User Guide
 
 Plain steps. Copy-paste each command. If a step prints the "success receipt" shown
-under it, it worked. Prefer clicking? Use the control panel: `tools\ZB-Winget-UI.ps1`.
+under it, it worked. Prefer clicking? Use the control panel: `ui\ZB-Winget-UI.ps1`.
 
 ---
 
@@ -108,4 +108,4 @@ The repo remembers nothing between rebuilds — that is by design.
 | 404 from the function app | Someone rebuilt without re-publishing; run §2 per package. |
 
 Ops details and module-bug notes: `RUNBOOK.md`. History: `build-journal-*.md`.
-GUI users: `tools\ZB-Winget-UI.ps1` wraps the same commands — no CLI needed.
+GUI users: `ui\ZB-Winget-UI.ps1` wraps the same commands — no CLI needed.

@@ -5,7 +5,7 @@ This fork adds an operator/developer workflow on top of Microsoft's winget-cli-r
 | File | What it is |
 |---|---|
 | `USERS.md` | **how to publish, list, download, install** — read this first |
-| `tools\ZB-Winget-UI.ps1` | point-and-click control panel (no CLI needed) |
+| `ui\ZB-Winget-UI.ps1` | point-and-click control panel (no CLI needed) |
 | `RUNBOOK.md` | build / verify / repair / destroy the repo itself (ops) |
 | `deploy.ps1` | the one script behind everything (`-Publish`, `-List`, `-Fetch`, `-Deploy`, …) |
 | `scripts/verify-loop.ps1` | read-only health check — receipt `6 passed, 0 failed` |
