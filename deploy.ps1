@@ -14,6 +14,9 @@ SWITCHES
   -Deploy                               create everything via Microsoft.WinGet.RestSource,
                                         then repair identity/RBAC where the module leaves
                                         gaps, then wait until the endpoint answers
+  -Repair                               re-run the post-deploy repair standalone
+                                        (use after a deploy that errored at the module's
+                                        final Cosmos-role-assignment step)
   -Verify                               read-only: discover + probe the endpoint
   -GetManifest -PackageId <id> [-Version <v>]
                                         pull one manifest version from microsoft/winget-pkgs
@@ -38,6 +41,7 @@ KNOWN LIMITS (documented, not hidden)
 param(
   [switch]$Destroy,
   [switch]$Deploy,
+  [switch]$Repair,
   [switch]$Verify,
   [switch]$GetManifest,
   [switch]$Ingest,
@@ -143,22 +147,44 @@ function Test-RepoHealth {
 function Set-RepoRepair {
   $r = Get-RepoResources
   Step "post-deploy checks (function '$($r.App.name)', cosmos '$($r.Cosmos)')"
+  $didRepair = $false
   $dis = (az cosmosdb show -g $RG -n $r.Cosmos --query disableLocalAuth -o tsv) -eq 'true'
-  if (-not $dis) { Info 'cosmos accepts key auth - module wiring intact, no repair needed'; return $r }
-  Info 'cosmos has disableLocalAuth=true - applying managed-identity repair (proven 2026-10-19)'
-  $principal = az functionapp identity assign -g $RG -n $r.App.name --query principalId -o tsv
-  if (-not $principal) { throw 'identity assign returned no principalId' }
-  $already = az cosmosdb sql role assignment list --account-name $r.Cosmos -g $RG --query "[?principalId=='$principal'].id" -o tsv 2>$null
-  if (-not $already) {
-    az cosmosdb sql role assignment create --account-name $r.Cosmos -g $RG --scope '/' `
-      --role-definition-id '00000000-0000-0000-0000-000000000002' --principal-id $principal -o none
-    Info 'granted Cosmos Built-in Data Contributor'
-  } else { Info 'cosmos RBAC already in place' }
-  az functionapp config appsettings set -g $RG -n $r.App.name --settings `
-    "CosmosAccountEndpoint=https://$($r.Cosmos).documents.azure.com:443/" `
-    CosmosDatabase=WinGet CosmosContainer=Manifests CosmosUseAadAuth=true -o none | Out-Null
-  az functionapp restart -g $RG -n $r.App.name -o none
-  Info 'settings set + restarted (RBAC may take ~10 min to propagate - the probe waits for it)'
+  if ($dis) {
+    Info 'cosmos has disableLocalAuth=true - applying managed-identity repair (proven 2026-10-19)'
+    $principal = az functionapp identity assign -g $RG -n $r.App.name --query principalId -o tsv
+    if (-not $principal) { throw 'identity assign returned no principalId' }
+    $already = az cosmosdb sql role assignment list --account-name $r.Cosmos -g $RG --query "[?principalId=='$principal'].id" -o tsv 2>$null
+    if (-not $already) {
+      az cosmosdb sql role assignment create --account-name $r.Cosmos -g $RG --scope '/' `
+        --role-definition-id '00000000-0000-0000-0000-000000000002' --principal-id $principal -o none
+      Info 'granted Cosmos Built-in Data Contributor'
+    } else { Info 'cosmos RBAC already in place' }
+    az functionapp config appsettings set -g $RG -n $r.App.name --settings `
+      "CosmosAccountEndpoint=https://$($r.Cosmos).documents.azure.com:443/" `
+      CosmosDatabase=WinGet CosmosContainer=Manifests CosmosUseAadAuth=true -o none | Out-Null
+    Info 'cosmos app settings set'
+    $didRepair = $true
+  } else { Info 'cosmos accepts key auth - module wiring intact, no repair needed' }
+
+  # v1.10.1 module bug: it throws at the Cosmos role-assignment step (GUID passed as RG
+  # name) BEFORE publishing the function code -> app exists but is empty (404 on /api/*).
+  # Repair: if no functions are deployed, publish the module's own stock zip.
+  $fnNames = @(az functionapp function list -g $RG -n $r.App.name --query "[].name" -o tsv 2>$null) | Where-Object { $_ -match '\S' }
+  if ($fnNames.Count -eq 0) {
+    $mod = Get-Module Microsoft.WinGet.RestSource -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+    $zip = Join-Path $mod.ModuleBase 'Data\WinGet.RestSource.Functions.zip'
+    if (-not (Test-Path -LiteralPath $zip)) { throw "module stock zip not found: $zip" }
+    Info "function app has no code - publishing module stock zip ($(('{0:N1}' -f ((Get-Item $zip).Length / 1MB))) MB)"
+    Import-Module Az.Websites -ErrorAction Stop
+    Publish-AzWebApp -ArchivePath $zip -ResourceGroupName $RG -Name $r.App.name -Force -ErrorAction Stop | Out-Null
+    $didRepair = $true
+    Info 'code published'
+  } else { Info "code present ($($fnNames.Count) functions) - no publish needed" }
+
+  if ($didRepair) {
+    az functionapp restart -g $RG -n $r.App.name -o none
+    Info 'restarted (RBAC may take ~10 min to propagate - the probe waits for it)'
+  }
   return $r
 }
 
@@ -190,12 +216,35 @@ if ($Deploy) {
     if ([string]::IsNullOrWhiteSpace([string]$sourceSettings[$k])) { $sourceSettings.Remove($k) }
   }
   Info 'calling New-WinGetSource (ARM deploy - expect ~10-40 min)'
-  $ok = New-WinGetSource @sourceSettings
-  if (-not $ok) { throw 'New-WinGetSource reported failure.' }
+  Info 'NOTE: the module may throw at its LAST step (Cosmos role assignment passes a GUID as a resource-group name - v1.10.1 bug).'
+  Info '      If resources are all built and ONLY that failed -> run: .\deploy.ps1 -Repair, then .\deploy.ps1 -Verify'
+  try {
+    $ok = New-WinGetSource @sourceSettings
+    if (-not $ok) { throw 'New-WinGetSource reported failure.' }
+  } catch {
+    $r = $null
+    try { $r = Get-RepoResources } catch { }
+    if ($r) {
+      Write-Host '[MODULE_THREW_AFTER_BUILD] resources exist - switching to -Repair path' -ForegroundColor Yellow
+      Set-RepoRepair | Out-Null
+      if (-not (Test-RepoHealth)) { throw 'endpoint did not come healthy after repair - see probe output.' }
+      Write-Host "`n[DEPLOY_DONE] (module errored at final wiring; repair completed it) Next: -GetManifest -> -Ingest -> -ClientTest" -ForegroundColor Green
+      return
+    }
+    throw 'New-WinGetSource failed before resources existed - nothing to repair. See output above.'
+  }
 
   Set-RepoRepair | Out-Null
   if (-not (Test-RepoHealth)) { throw 'endpoint did not come healthy after deploy - see probe output.' }
   Write-Host "`n[DEPLOY_DONE] repo is live. Next: -GetManifest -> -Ingest -> -ClientTest" -ForegroundColor Green
+}
+
+# ============================================================= -Repair
+if ($Repair) {
+  Ensure-Az
+  Set-RepoRepair | Out-Null
+  if (-not (Test-RepoHealth)) { throw 'endpoint did not come healthy after repair - see probe output.' }
+  Write-Host "[REPAIR_DONE] repo healthy." -ForegroundColor Green
 }
 
 # ============================================================= -Verify
@@ -291,6 +340,6 @@ exit `$LASTEXITCODE
 }
 
 # no switch given -> usage
-if (-not ($Destroy -or $Deploy -or $Verify -or $GetManifest -or $Ingest -or $ClientTest)) {
-  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Verify / -GetManifest / -Ingest / -ClientTest (see header comment).'
+if (-not ($Destroy -or $Deploy -or $Repair -or $Verify -or $GetManifest -or $Ingest -or $ClientTest)) {
+  Write-Host 'No switch given. Use: -Destroy / -Deploy / -Repair / -Verify / -GetManifest / -Ingest / -ClientTest (see header comment).'
 }
