@@ -56,6 +56,8 @@ function Append-Log {
         $_ -notmatch '^\s*\*+\s*$' -and
         $_ -notmatch '^\s*\*?\s*(See all possible breaking changes|At least one change applies)'
     }) -join "`r`n"
+    $clean = $clean -replace "\x1B\[[0-9;]*[A-Za-z]", ''   # strip ANSI colour codes
+    $clean = $clean -replace "\[[0-9;]{1,6}m", ''          # strip leftovers like [32;1m
     if (-not $clean.Trim()) { return }
     $script:buffer += $clean + "`r`n"
     $tbLog.AppendText($clean + "`r`n")
@@ -167,7 +169,7 @@ function Run-Command {
     Set-Busy $true
     $script:proc = Start-Process -FilePath 'pwsh' -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $script:outPath -RedirectStandardError $script:errPath `
-        -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', $commandText)
+        -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', "`$PSStyle.OutputRendering = 'PlainText'; $commandText")
     $script:timer.Start()
 }
 
