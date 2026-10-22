@@ -6,7 +6,7 @@ This fork adds an operator/developer workflow on top of Microsoft's winget-cli-r
 |---|---|
 | `USERS.md` | **how to publish, list, download, install** — read this first |
 | `ui\ZB-Winget-UI.ps1` | point-and-click control panel (no CLI needed) |
-| `RUNBOOK.md` | build / verify / repair / destroy the repo itself (ops) |
+| `BUILD.md` | build the repo from zero: deploy / verify / repair / destroy (ops) |
 | `deploy.ps1` | the one script behind everything (`-Publish`, `-List`, `-Fetch`, `-Deploy`, …) |
 | `scripts/verify-loop.ps1` | read-only health check — receipt `6 passed, 0 failed` |
 | `paw-build/` | previous phase: PAW consumer-VM scripts (reference, will evolve next) |
