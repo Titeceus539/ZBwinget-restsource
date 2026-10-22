@@ -114,8 +114,13 @@ function Ensure-Az {
 # ------------------------------------------------------- resource discovery
 # Discover, never assume: the module names resources itself, so we read them back.
 function Get-RepoResources {
-  $app    = az functionapp list -g $RG --query '[0].{name:name, host:defaultHostName}' -o json 2>$null | ConvertFrom-Json
-  $cosmos = az cosmosdb list -g $RG --query '[0].name' -o tsv 2>$null
+  $appRaw   = az functionapp list -g $RG --query '[0].{name:name, host:defaultHostName}' -o json 2>&1
+  $cosmosRaw = az cosmosdb list -g $RG --query '[0].name' -o tsv 2>&1
+  if ("$appRaw $cosmosRaw" -match 'AuthorizationFailed') {
+    throw "AuthorizationFailed - your Azure role (PIM Owner) is not active right now. Activate Owner in the portal (Entra -> PIM -> Activate), then run the same command again. Nothing else is wrong."
+  }
+  $app    = ($appRaw -join "`n") | ConvertFrom-Json -ErrorAction SilentlyContinue
+  $cosmos = ("$cosmosRaw" -split "`n")[0].Trim()
   if (-not $app -or -not $cosmos) {
     throw "RG '$RG' has no function app and/or Cosmos account yet - run -Deploy first."
   }

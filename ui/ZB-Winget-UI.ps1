@@ -7,7 +7,7 @@
 #
 # Buttons: Publish (file picker + metadata) | List | Verify | Setup this PC | Install | Downloads
 
-param([switch]$SelfTest, [string]$SelfTestFile)
+param([switch]$SelfTest, [string]$SelfTestFile, [switch]$SelfTestPublish)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -44,8 +44,17 @@ $script:timer.Interval = 600
 function Append-Log {
     param([string]$text)
     if (-not $text) { return }
-    $script:buffer += $text + "`r`n"
-    $tbLog.AppendText($text + "`r`n")
+    # drop known Microsoft noise so real errors/receipts stand out
+    $clean = ($text -split "`r?`n" | Where-Object {
+        $_ -notmatch 'App settings have been redacted' -and
+        $_ -notmatch 'This cmdlet will undergo a breaking change' -and
+        $_ -notmatch 'go\.microsoft\.com/fwlink' -and
+        $_ -notmatch '^\s*\*+\s*$' -and
+        $_ -notmatch '^\s*\*?\s*(See all possible breaking changes|At least one change applies)'
+    }) -join "`r`n"
+    if (-not $clean.Trim()) { return }
+    $script:buffer += $clean + "`r`n"
+    $tbLog.AppendText($clean + "`r`n")
     $tbLog.SelectionStart = $tbLog.TextLength
     $tbLog.ScrollToCaret()
 }
@@ -103,30 +112,40 @@ function Run-Command {
         [System.Windows.Forms.MessageBox]::Show('A task is still running — wait for it to finish.', 'Busy') | Out-Null
         return
     }
-    $script:logPath = Join-Path $env:TEMP ("zbui-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-    $script:logPos = 0
-    $wrapped = "$commandText *>&1 | Out-File -FilePath '$($script:logPath)' -Encoding utf8 -Append"
+    $stamp = [guid]::NewGuid().ToString('N')
+    $script:outPath = Join-Path $env:TEMP "zbui-$stamp.out"
+    $script:errPath = Join-Path $env:TEMP "zbui-$stamp.err"
+    $script:posOut = 0
+    $script:posErr = 0
+
+    # OS-level redirection of BOTH streams. PowerShell stream redirection (`*>&1`) does
+    # not catch a terminating `throw` from a called script - that was the "exit 1 with
+    # no message" bug. Standard error at the process boundary catches everything.
     Append-Log ("`r`n=== {0} ===" -f $label)
     Set-Status ("running: {0} ..." -f $label) 'busy'
     Set-Busy $true
     $script:proc = Start-Process -FilePath 'pwsh' -PassThru -WindowStyle Hidden `
-        -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', $wrapped)
+        -RedirectStandardOutput $script:outPath -RedirectStandardError $script:errPath `
+        -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', $commandText)
     $script:timer.Start()
 }
 
 function Quote([string]$p) { "'" + $p.Replace("'", "''") + "'" }
 
 $script:timer.Add_Tick({
-    # stream new log content
-    try {
-        if ($script:logPath -and (Test-Path -LiteralPath $script:logPath)) {
-            $all = [IO.File]::ReadAllText($script:logPath)
-            if ($all.Length -gt $script:logPos) {
-                Append-Log $all.Substring($script:logPos).TrimEnd("`r", "`n")
-                $script:logPos = $all.Length
+    # stream new content from stdout and stderr
+    foreach ($pair in @(@{ path = $script:outPath; key = 'posOut' }, @{ path = $script:errPath; key = 'posErr' })) {
+        try {
+            if ($pair.path -and (Test-Path -LiteralPath $pair.path)) {
+                $all = [IO.File]::ReadAllText($pair.path)
+                $pos = [int](Get-Variable -Name $pair.key -Scope Script -ValueOnly)
+                if ($all.Length -gt $pos) {
+                    Append-Log $all.Substring($pos).TrimEnd("`r", "`n")
+                    Set-Variable -Name $pair.key -Value $all.Length -Scope Script
+                }
             }
-        }
-    } catch { }
+        } catch { }
+    }
 
     if ($script:proc -and $script:proc.HasExited) {
         $script:timer.Stop()
@@ -136,9 +155,17 @@ $script:timer.Add_Tick({
                     ForEach-Object { $_.Groups[1].Value } | Select-Object -Last 1)
         if ($code -eq 0 -and $receipt) { Set-Status ("done — {0}" -f $receipt) 'ok' }
         elseif ($code -eq 0)          { Set-Status 'done' 'ok' }
-        else                           { Set-Status ("failed (exit {0}) — see log above" -f $code) 'err' }
+        else {
+            # surface the actual reason on the status line, not just "exit 1"
+            $why = ($script:buffer -split "`r?`n" |
+                    Where-Object { $_ -match 'ERROR:|AuthorizationFailed|Exception|not recognized' } |
+                    Select-Object -Last 1)
+            Set-Status (("failed (exit {0})" -f $code) + $(if ($why) { " — " + $why.Trim() } else { ' — see log above' })) 'err'
+        }
         Set-Busy $false
-        Remove-Item -LiteralPath $script:logPath -Force -ErrorAction SilentlyContinue
+        foreach ($p in @($script:outPath, $script:errPath)) {
+            if ($p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+        }
         $script:proc = $null
         if ($script:selfTest) { Start-Sleep -Milliseconds 400; $form.Close() }
     }
@@ -337,7 +364,12 @@ if ($script:selfTest) {
             $tbFile.Text = $SelfTestFile
             Fill-FromFile $SelfTestFile
             Append-Log ("AUTOFILL_RESULT id='{0}' version='{1}' publisher='{2}' arch='{3}' desc='{4}'" -f $tbId.Text, $tbVer.Text, $tbPubr.Text, $cmbArch.SelectedItem, $tbDesc.Text)
-            $form.Close()
+            if ($SelfTestPublish) {
+                Append-Log 'SELFTEST: clicking "Publish to repo" ...'
+                $btnPublish.PerformClick()      # form closes when the child process exits
+            } else {
+                $form.Close()
+            }
         })
     } else {
         $script:autoTimer = New-Object System.Windows.Forms.Timer
@@ -358,6 +390,12 @@ if ($script:selfTest) {
     Write-Output $script:buffer
     Write-Output '--- SELFTEST LOG END ---'
     if ($SelfTestFile) {
+        if ($SelfTestPublish) {
+            if ($script:buffer -match '\[PUBLISH_OK\]')                      { Write-Output 'SELFTEST: PASS (publish)'; exit 0 }
+            if ($script:buffer -match 'AuthorizationFailed')                { Write-Output 'SELFTEST: PASS (failure surfaced clearly: PIM Owner inactive)'; exit 0 }
+            Write-Output 'SELFTEST: FAIL (publish produced neither PUBLISH_OK nor a clear reason)'
+            exit 1
+        }
         if ($script:buffer -match "AUTOFILL_RESULT id='[^']+\.[^']+'") { Write-Output 'SELFTEST: PASS (autofill)'; exit 0 }
         if ($script:buffer -match 'no metadata for:')                { Write-Output 'SELFTEST: PASS (autofill - file has no metadata, fields left blank by design)'; exit 0 }
         Write-Output 'SELFTEST: FAIL (neither an id nor a no-metadata note)'
