@@ -66,6 +66,9 @@ az login
 
 **GUI:** Browse → fill fields → **Publish to repo**.
 
+> Not sure what to type in each field? **`PUBLISHING.md`** shows how to read the right
+> values straight off the file (with six worked examples from the demo kit).
+
 **CLI — one line:**
 ```powershell
 .\deploy.ps1 -Publish -File "C:\1-DEMO-Winget\ZB-DemoApp.exe" -PackageId Zenblox.DemoApp -Version 1.0.0 -Publisher Zenblox -Description "what it is"

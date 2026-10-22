@@ -5,6 +5,7 @@ This fork adds an operator/developer workflow on top of Microsoft's winget-cli-r
 | File | What it is |
 |---|---|
 | `USERS.md` | **how to publish, list, download, install** — read this first |
+| `PUBLISHING.md` | what to put in every publish field, with real examples |
 | `ui\ZB-Winget-UI.ps1` | point-and-click control panel (no CLI needed) |
 | `BUILD.md` | build the repo from zero: deploy / verify / repair / destroy (ops) |
 | `deploy.ps1` | the one script behind everything (`-Publish`, `-List`, `-Fetch`, `-Deploy`, …) |
