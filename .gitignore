@@ -31,14 +31,14 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-!scripts/Release/
+!upstream/Release/
 
 /Parameters/
 
 # These are the PowerShell helper libraries used to run. Added to artifact as automated task
-Tools/PowershellModule/src/Library/ARMTemplate
-Tools/PowershellModule/src/Library/RestAPI
-Tools/PowershellModule/src/Library/WinGet.RestSource.PowerShellSupport
+upstream/Tools/PowershellModule/src/Library/ARMTemplate
+upstream/Tools/PowershellModule/src/Library/RestAPI
+upstream/Tools/PowershellModule/src/Library/WinGet.RestSource.PowerShellSupport
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
@@ -362,10 +362,10 @@ MigrationBackup/
 .ionide/
 
 # Ignore JetBrains Files
-src/.idea/
+upstream/src/.idea/
 
 # Exclude Function Settings
-src/WinGet.RestSource.Functions/local.settings.json
+upstream/src/WinGet.RestSource.Functions/local.settings.json
 
 # Exclude local test settings
 test.runsettings.json
@@ -374,7 +374,7 @@ test.runsettings.json
 Microsoft.WinGet.*.Documentation.xml
 
 # Developer ARM template
-src/WinGet.RestSource.Infrastructure/**/*.dev.*json
+upstream/src/WinGet.RestSource.Infrastructure/**/*.dev.*json
 
 deploy-settings.psd1
 

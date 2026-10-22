@@ -23,7 +23,7 @@ Everything below this line is Microsoft's upstream documentation for the product
 
 The [Microsoft.WinGet.RestSource](https://www.powershellgallery.com/packages/Microsoft.WinGet.RestSource) PowerShell module is provided for creating and managing Windows Package Manager REST sources.
 
-Please visit [Create a Windows Package Manager REST source](/Tools/PowershellModule/doc/WingetRestSource.md) for more details.
+Please visit [Create a Windows Package Manager REST source](/upstream/Tools/PowershellModule/doc/WingetRestSource.md) for more details.
 
 ## Building the client
 
