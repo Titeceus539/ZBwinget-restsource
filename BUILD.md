@@ -92,7 +92,7 @@ are key-locked. Only 5xx is failure.
 ## 4. Publish your first package
 
 ```powershell
-.\deploy.ps1 -Publish -File "C:\Users\User\winget-demo\ZB-DemoApp.exe" `
+.\deploy.ps1 -Publish -File "C:\1-DEMO-Winget\ZB-DemoApp.exe" `
     -PackageId Zenblox.DemoApp -Version 1.0.0 -Publisher Zenblox -Description "demo app"
 ```
 → `[PUBLISH_OK]`. See USERS.md for the catalog-app path.

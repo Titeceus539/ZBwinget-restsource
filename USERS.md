@@ -68,7 +68,7 @@ az login
 
 **CLI — one line:**
 ```powershell
-.\deploy.ps1 -Publish -File "C:\Users\User\winget-demo\ZB-DemoApp.exe" -PackageId Zenblox.DemoApp -Version 1.0.0 -Publisher Zenblox -Description "what it is"
+.\deploy.ps1 -Publish -File "C:\1-DEMO-Winget\ZB-DemoApp.exe" -PackageId Zenblox.DemoApp -Version 1.0.0 -Publisher Zenblox -Description "what it is"
 ```
 **Receipt:** `[PUBLISH_OK]`.
 
@@ -129,7 +129,7 @@ winget source remove internal          # admin terminal; forgets the repo on tha
 
 ## 7. Demo kit
 
-`C:\Users\User\winget-demo\` holds verified demo files + `README.md` with ready lines:
+`C:\1-DEMO-Winget\` holds verified demo files + `README.md` with ready lines:
 
 | File | Story |
 |---|---|
