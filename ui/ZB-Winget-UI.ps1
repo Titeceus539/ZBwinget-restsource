@@ -34,11 +34,13 @@ try {
 } catch { }
 
 # ------------------------------------------------------------------- run engine
-$script:proc  = $null
-$script:logPath = $null
-$script:logPos = 0
-$script:buffer = ''
-$script:timer = New-Object System.Windows.Forms.Timer
+$script:proc    = $null
+$script:outPath = $null
+$script:errPath = $null
+$script:posOut  = 0
+$script:posErr  = 0
+$script:buffer  = ''
+$script:timer   = New-Object System.Windows.Forms.Timer
 $script:timer.Interval = 600
 
 function Append-Log {
