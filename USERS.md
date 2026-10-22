@@ -40,7 +40,7 @@ Prefer clicking? **`ui\Open-Panel.cmd`** (double-click) — every button runs th
 | Area | Use it to |
 |---|---|
 | Header line | confirm which repo you're pointed at (`TmWinget2` · `tm-winget-rg`) |
-| **Installer file + Browse…** | pick any `.exe` / `.msi` from disk |
+| **Installer file + Browse…** | pick any `.exe` / `.msi` from disk — **the fields below fill themselves** from the file (public catalog ID used when the app is known) |
 | Package ID / Version / Arch / Publisher / Description | metadata winget will show |
 | **Publish to repo** | upload + hash + manifest + ingest in one go → `[PUBLISH_OK]` |
 | **List packages in repo** | live table of everything in the store |

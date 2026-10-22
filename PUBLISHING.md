@@ -4,6 +4,14 @@ You picked a file. The panel asks for **Package ID, Version, Publisher, Descript
 Short answer: **the file already knows** — read it, don't guess. This page shows how,
 then walks six real files from `C:\1-DEMO-Winget\`.
 
+> **Good news: the control panel already does this for you.** Select a file (Browse…, or
+> paste a path and tab away) and it fills every box from the file's own metadata — and
+> when the app exists in the public winget catalog, it swaps in the **catalog ID**
+> (so Rufus becomes `Rufus.Rufus`, not a guessed `Akeo.Rufus`). Treat the filled values
+> as a **suggestion** and correct anything odd. Files with no metadata (our own
+> `ZB-DemoApp.exe` is one) leave the boxes blank on purpose and say which fields you must type.
+> The rules and snippets below are for when you want to know *why*, or work from the CLI.
+
 ---
 
 ## 1. Read the file (copy-paste, tested)

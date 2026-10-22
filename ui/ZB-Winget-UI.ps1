@@ -7,7 +7,7 @@
 #
 # Buttons: Publish (file picker + metadata) | List | Verify | Setup this PC | Install | Downloads
 
-param([switch]$SelfTest)
+param([switch]$SelfTest, [string]$SelfTestFile)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -22,6 +22,9 @@ if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
 $repo      = Split-Path $PSScriptRoot -Parent
 $deploy    = Join-Path $repo 'deploy.ps1'
 $downloads = Join-Path $repo 'downloads'
+
+# metadata reader (reads the picked file -> fills the form)
+. (Join-Path $PSScriptRoot 'Get-PackageMetadata.ps1')
 
 # ---------------------------------------------------------------- settings chip
 $ctxLine = 'settings: deploy-settings.psd1 not found'
@@ -62,6 +65,34 @@ function Set-Status {
         'busy' { [System.Drawing.Color]::FromArgb(150, 90, 0) }
         default { [System.Drawing.Color]::FromArgb(60, 60, 60) }
     }
+}
+
+# Reads the chosen file and fills the form from its own metadata. Always overwrites,
+# so switching files never leaves stale values from the previous one.
+function Fill-FromFile {
+    param([string]$path)
+    if (-not $path -or -not (Test-Path -LiteralPath $path)) { return }
+    $m = $null
+    try { $m = Get-PackageMetadata -Path $path -UseCatalog }
+    catch { Append-Log "could not read metadata: $($_.Exception.Message)"; return }
+    if (-not $m) { return }
+    $tbId.Text   = $m.PackageId
+    $tbVer.Text  = $m.Version
+    $tbPubr.Text = $m.Publisher
+    $tbDesc.Text = $m.Description
+    if ($m.Arch) { $cmbArch.SelectedItem = $m.Arch }
+    $note = if ($m.CatalogId) { ' (public catalog ID)' } else { '' }
+    Append-Log ("auto-fill  {0}  ->  id={1}{2}  version={3}  publisher={4}  arch={5}" -f $m.File, $m.PackageId, $note, $m.Version, $m.Publisher, $m.Arch)
+    $missing = @()
+    if (-not $m.PackageId)    { $missing += 'Package ID' }
+    if (-not $m.Version)      { $missing += 'Version' }
+    if (-not $m.Publisher)    { $missing += 'Publisher' }
+    if (-not $m.Description)  { $missing += 'Description' }
+    if ($missing.Count) {
+        Append-Log ("no metadata for: {0} - type those in (see PUBLISHING.md)" -f ($missing -join ', '))
+        Set-Status ("auto-filled - file carries no metadata for: " + ($missing -join ', ')) 'info'
+    }
+    else                { Set-Status 'auto-filled from the file - check the values, then Publish' 'ok' }
 }
 
 # Runs any PowerShell command line with output captured to a temp log; the timer
@@ -153,8 +184,14 @@ $btnBrowse.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
     $dlg.Title = 'Pick the installer to publish'
     $dlg.Filter = 'Installers (*.exe;*.msi)|*.exe;*.msi|All files (*.*)|*.*'
-    if ($dlg.ShowDialog() -eq 'OK') { $tbFile.Text = $dlg.FileName }
+    if ($dlg.ShowDialog() -eq 'OK') {
+        $tbFile.Text = $dlg.FileName
+        Fill-FromFile $dlg.FileName
+    }
 })
+
+# typing/pasting a path and tabbing away also auto-fills
+$tbFile.Add_Leave({ Fill-FromFile $tbFile.Text })
 
 $lblId = New-Object System.Windows.Forms.Label
 $lblId.Text = 'Package ID'
@@ -290,17 +327,28 @@ $form.Controls.Add($lblStatus)
 Append-Log 'ZB Winget Repo — control panel. Every button runs ..\deploy.ps1 (same path as CLI).'
 Append-Log ("repo: {0}" -f $repo)
 
-# --- self-test hook: fires the List button like a user click, then closes with a result
+# --- self-test hooks -------------------------------------------------------------------
+# -SelfTest            : clicks "List packages in repo" itself, exits 0/1 on the receipt
+# -SelfTest -SelfTestFile <path> : selects that file, auto-fills, prints the fields, exits
 $script:selfTest = $SelfTest
 if ($script:selfTest) {
-    $script:autoTimer = New-Object System.Windows.Forms.Timer
-    $script:autoTimer.Interval = 1200
-    $script:autoTimer.Add_Tick({
-        $script:autoTimer.Stop()
-        Append-Log 'SELFTEST: clicking "List packages in repo" ...'
-        $btnList.PerformClick()
-    })
-    $form.Add_Shown({ $script:autoTimer.Start() })
+    if ($SelfTestFile) {
+        $form.Add_Shown({
+            $tbFile.Text = $SelfTestFile
+            Fill-FromFile $SelfTestFile
+            Append-Log ("AUTOFILL_RESULT id='{0}' version='{1}' publisher='{2}' arch='{3}' desc='{4}'" -f $tbId.Text, $tbVer.Text, $tbPubr.Text, $cmbArch.SelectedItem, $tbDesc.Text)
+            $form.Close()
+        })
+    } else {
+        $script:autoTimer = New-Object System.Windows.Forms.Timer
+        $script:autoTimer.Interval = 1200
+        $script:autoTimer.Add_Tick({
+            $script:autoTimer.Stop()
+            Append-Log 'SELFTEST: clicking "List packages in repo" ...'
+            $btnList.PerformClick()
+        })
+        $form.Add_Shown({ $script:autoTimer.Start() })
+    }
 }
 
 [void]$form.ShowDialog()
@@ -309,6 +357,12 @@ if ($script:selfTest) {
     Write-Output '--- SELFTEST LOG BEGIN ---'
     Write-Output $script:buffer
     Write-Output '--- SELFTEST LOG END ---'
+    if ($SelfTestFile) {
+        if ($script:buffer -match "AUTOFILL_RESULT id='[^']+\.[^']+'") { Write-Output 'SELFTEST: PASS (autofill)'; exit 0 }
+        if ($script:buffer -match 'no metadata for:')                { Write-Output 'SELFTEST: PASS (autofill - file has no metadata, fields left blank by design)'; exit 0 }
+        Write-Output 'SELFTEST: FAIL (neither an id nor a no-metadata note)'
+        exit 1
+    }
     if ($script:buffer -match '\[LIST_OK\]') { Write-Output 'SELFTEST: PASS'; exit 0 }
     Write-Output 'SELFTEST: FAIL (no [LIST_OK] receipt seen)'
     exit 1
