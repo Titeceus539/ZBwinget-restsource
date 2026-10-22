@@ -7,7 +7,8 @@
 #
 # Buttons: Publish (file picker + metadata) | List | Verify | Setup this PC | Install | Downloads
 
-param([switch]$SelfTest, [string]$SelfTestFile, [switch]$SelfTestPublish)
+param([switch]$SelfTest, [string]$SelfTestFile, [switch]$SelfTestPublish,
+      [ValidateSet('light', 'dark')][string]$Theme = 'light')
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -40,6 +41,7 @@ $script:errPath = $null
 $script:posOut  = 0
 $script:posErr  = 0
 $script:buffer  = ''
+$script:dark    = $false
 $script:timer   = New-Object System.Windows.Forms.Timer
 $script:timer.Interval = 600
 
@@ -74,8 +76,45 @@ function Set-Status {
         'ok'   { [System.Drawing.Color]::FromArgb(0, 120, 60) }
         'err'  { [System.Drawing.Color]::FromArgb(180, 30, 30) }
         'busy' { [System.Drawing.Color]::FromArgb(150, 90, 0) }
-        default { [System.Drawing.Color]::FromArgb(60, 60, 60) }
+        default { if ($script:dark) { [System.Drawing.Color]::FromArgb(200, 200, 200) } else { [System.Drawing.Color]::FromArgb(60, 60, 60) } }
     }
+}
+
+# --- theme: one button, two palettes. Log pane stays dark in both (it's a console).
+function Get-AllControls {
+    param($Parent)
+    foreach ($c in $Parent.Controls) { $c; Get-AllControls -Parent $c }
+}
+
+function Set-Theme {
+    param([ValidateSet('light', 'dark')][string]$Mode)
+    $dark    = ($Mode -eq 'dark')
+    $script:dark = $dark
+    $bg      = if ($dark) { [System.Drawing.Color]::FromArgb(32, 32, 32) }  else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
+    $fg      = if ($dark) { [System.Drawing.Color]::FromArgb(232, 232, 232) } else { [System.Drawing.Color]::Black }
+    $inputBg = if ($dark) { [System.Drawing.Color]::FromArgb(45, 45, 45) } else { [System.Drawing.Color]::White }
+    $btnBg   = if ($dark) { [System.Drawing.Color]::FromArgb(60, 60, 60) } else { [System.Drawing.Color]::FromArgb(225, 225, 225) }
+
+    $form.BackColor = $bg
+    $form.ForeColor = $fg
+    foreach ($c in Get-AllControls -Parent $form) {
+        switch ($c.GetType().Name) {
+            { $_ -in 'GroupBox', 'Label' } { $c.BackColor = $bg; $c.ForeColor = $fg }
+            { $_ -in 'TextBox', 'ComboBox' } {
+                $c.BackColor = $inputBg; $c.ForeColor = $fg
+                if ($c -is [System.Windows.Forms.TextBox]) { $c.BorderStyle = 'FixedSingle' }
+            }
+            'Button' {
+                $c.FlatStyle  = if ($dark) { 'Flat' } else { 'System' }
+                $c.BackColor  = $btnBg
+                $c.ForeColor  = $fg
+                if ($dark) { $c.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(90, 90, 90) }
+            }
+        }
+    }
+    $tbLog.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 24)   # console look, both modes
+    $tbLog.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
+    $btnTheme.Text = if ($dark) { '☀  Light' } else { '🌙  Dark' }
 }
 
 # Reads the chosen file and fills the form from its own metadata. Always overwrites,
@@ -187,6 +226,15 @@ $ctx.Location = New-Object System.Drawing.Point(14, 8)
 $ctx.AutoSize = $true
 $ctx.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
 $form.Controls.Add($ctx)
+
+$btnTheme = New-Object System.Windows.Forms.Button
+$btnTheme.Text = '🌙  Dark'
+$btnTheme.Location = New-Object System.Drawing.Point(830, 4)
+$btnTheme.Size = New-Object System.Drawing.Size(88, 24)
+$btnTheme.Anchor = 'Top,Right'
+$btnTheme.FlatStyle = 'System'
+$btnTheme.Add_Click({ Set-Theme -Mode $(if ($script:dark) { 'light' } else { 'dark' }) })
+$form.Controls.Add($btnTheme)
 
 # --- publish group
 $grpPub = New-Object System.Windows.Forms.GroupBox
@@ -355,6 +403,7 @@ $form.Controls.Add($lblStatus)
 
 Append-Log 'ZB Winget Repo — control panel. Every button runs ..\deploy.ps1 (same path as CLI).'
 Append-Log ("repo: {0}" -f $repo)
+Set-Theme -Mode $Theme
 
 # --- self-test hooks -------------------------------------------------------------------
 # -SelfTest            : clicks "List packages in repo" itself, exits 0/1 on the receipt
